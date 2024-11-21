@@ -1,12 +1,12 @@
 -- module Scheduling(Credential(..), Day(..), WeeklyAvailability, CrewMember(..), Schedule(..)) where
 module Scheduling where
-import Data.Set (Set, empty)
+import Data.Set (Set, empty, insert)
 import Data.Map (Map, empty, toList, fromList, lookup, adjust)
 import Data.Maybe (isNothing, fromMaybe)
 import Data.Foldable (find)
 
 data Credential = Supervisor | Trainer | CrewChief | Driver | Attendant | Observer
-  deriving (Show, Eq)
+  deriving (Show, Ord, Eq)
 -- Additional types of credentials could be TrainerCrewChief | TrainerDriver
 
 data Day = Monday | Tuesday | Wednesday | Thursday | Friday | Saturday | Sunday
@@ -31,7 +31,7 @@ data Day = Monday | Tuesday | Wednesday | Thursday | Friday | Saturday | Sunday
 
 
 data CrewMember = Crew {name :: String, credentials :: Set Credential, availability :: Set Day}
-  deriving (Show)
+  deriving (Show, Ord, Eq)
 
 -- It is possible to change Role into it's own data type to have the type system enforce the presence of two attendants / observers
 data Role =  CrewChief_ | Driver_ | Attendant_
@@ -125,12 +125,12 @@ haveRelevantCredential (Crew {credentials = cred}) Driver_    = Driver `elem` cr
 haveRelevantCredential (Crew {credentials = cred}) Attendant_ = Attendant `elem` cred
 
 addToSchedule :: Schedule -> Day -> Role -> CrewMember -> Maybe Schedule
-addToSchedule schedule@(Schedule {daily_assignments = assignments}) day role crew
+addToSchedule schedule@(Schedule {crew = existingCrew, daily_assignments = assignments}) day role crew
     | isAvailableFor crew day && haveRelevantCredential crew role && opening schedule day role = 
       case role of
-        CrewChief_ ->  Just $ schedule {daily_assignments = adjust (\a -> a {crew_chief = Just crew}) day assignments}
-        Driver_    ->  Just $ schedule {daily_assignments = adjust (\a -> a {driver = Just crew}) day assignments}
-        Attendant_ ->  Just $ schedule {daily_assignments = adjust (firstOpening crew) day assignments}
+        CrewChief_ ->  Just $ schedule {crew = Data.Set.insert crew existingCrew, daily_assignments = adjust (\a -> a {crew_chief = Just crew}) day assignments}
+        Driver_    ->  Just $ schedule {crew = Data.Set.insert crew existingCrew, daily_assignments = adjust (\a -> a {driver = Just crew}) day assignments}
+        Attendant_ ->  Just $ schedule {crew = Data.Set.insert crew existingCrew, daily_assignments = adjust (firstOpening crew) day assignments}
     | otherwise = Nothing
   where firstOpening :: CrewMember -> Assignment -> Assignment
         firstOpening crew' assignment@(A {thing1 = Nothing}) = assignment {thing1 = Just crew'}
