@@ -1,8 +1,8 @@
 -- module Scheduling(Credential(..), Day(..), WeeklyAvailability, CrewMember(..), Schedule(..)) where
 module Scheduling where
-import Data.Set (Set, empty, insert)
+import Data.Set (Set, empty, insert, fromList)
 import Data.Map (Map, empty, toList, fromList, lookup, adjust)
-import Data.Maybe (isNothing, fromMaybe)
+import Data.Maybe (isNothing, fromMaybe, listToMaybe, mapMaybe)
 import Data.Foldable (find)
 import Control.Applicative (Alternative(..))
 
@@ -34,6 +34,9 @@ data Day = Monday | Tuesday | Wednesday | Thursday | Friday | Saturday | Sunday
 data CrewMember = Crew {name :: String, credentials :: Set Credential, availability :: Set Day}
   deriving (Show, Ord, Eq)
 
+newMember :: String -> [Credential] -> [Day] -> CrewMember
+newMember name' creds avail = Crew {name = name', credentials = Data.Set.fromList creds, availability = Data.Set.fromList avail}
+
 -- It is possible to change Role into it's own data type to have the type system enforce the presence of two attendants / observers
 data Role =  CrewChief_ | Driver_ | Attendant_
   deriving (Show)
@@ -61,7 +64,7 @@ instance (Ord g, Eq i) => Ord (HeuristicResult g i) where
 
 -- | Heuristics plan to implement the Functor and Applicative constraints, as these constraints will allow for 
 -- | the composition of Heuristics. Providing a method to create more complex constraints from simple ones. 
-newtype Heuristic g i = H (Schedule -> (HeuristicResult g i))
+newtype Heuristic g i = H (Schedule -> HeuristicResult g i)
 
 
 -- | rankSchedules takes in a Heuristic and a list of schedules producing a list of schedules
@@ -93,20 +96,20 @@ maximizeCrewUtilization = undefined
 emptyAssignment :: Assignment
 emptyAssignment = A {crew_chief = Nothing, driver = Nothing, thing1 = Nothing, thing2 = Nothing }
 emptySchedule :: Schedule
-emptySchedule = Schedule { crew = Data.Set.empty, daily_assignments = fromList emptyAssignments}
+emptySchedule = Schedule { crew = Data.Set.empty, daily_assignments = Data.Map.fromList emptyAssignments}
   where emptyAssignments = map (\d -> (d, emptyAssignment)) (enumFrom $ toEnum 0)
 
 -- [(day, [(role, crew_member)])]
-getOpening :: Schedule -> Role -> Maybe Day
-getOpening schedule CrewChief_ = fst <$> find chiefOpening (toList $ daily_assignments schedule)
+getOpening :: Schedule -> Role -> [Day]
+getOpening schedule CrewChief_ = fst <$> filter chiefOpening (toList $ daily_assignments schedule)
   where chiefOpening (_, A {crew_chief = chiefAssignment })
           | isNothing chiefAssignment = True
           | otherwise = False
-getOpening schedule Driver_ = fst <$> find driverOpening (toList $ daily_assignments schedule)
+getOpening schedule Driver_ = fst <$> filter driverOpening (toList $ daily_assignments schedule)
   where driverOpening (_, A {driver = driverAssignment })
           | isNothing driverAssignment = True
           | otherwise = False
-getOpening schedule Attendant_ = fst <$> find attendantOpening (toList $ daily_assignments schedule)
+getOpening schedule Attendant_ = fst <$> filter attendantOpening (toList $ daily_assignments schedule)
   where attendantOpening (_, A {thing1 = firstAssignment, thing2 = secondAssignment})
           | isNothing firstAssignment = True
           | isNothing secondAssignment = True
@@ -146,9 +149,11 @@ greedyStrategy crew = helper crew emptySchedule
         helper (x : xs) schedule = let chiefOpening = getOpening schedule CrewChief_
                                        driverOpening = getOpening schedule Driver_
                                        attendantOpening = getOpening schedule Attendant_
-                                       updatedSchedule = (chiefOpening >>= (\day -> addToSchedule schedule day CrewChief_ x)) <|>
-                                                         (driverOpening >>= (\day -> addToSchedule schedule day Driver_ x))   <|>
-                                                         (attendantOpening >>= (\day -> addToSchedule schedule day Attendant_ x))
-                                   in case updatedSchedule of
-                                       Just newSchedule -> helper (xs ++ [x]) newSchedule
-                                       Nothing -> schedule
+                                       chiefSchedules = mapMaybe (\day -> addToSchedule schedule day CrewChief_ x) chiefOpening
+                                       driverSchedules = mapMaybe (\day -> addToSchedule schedule day Driver_ x) driverOpening
+                                       attendantSchedules = mapMaybe (\day -> addToSchedule schedule day Attendant_ x) attendantOpening
+                                   in case (chiefSchedules, driverSchedules, attendantSchedules) of
+                                       (newSchedule : _, _, _) -> helper (xs ++ [x]) newSchedule
+                                       (_, newSchedule : _, _) -> helper (xs ++ [x]) newSchedule
+                                       (_, _, newSchedule : _) -> helper (xs ++ [x]) newSchedule
+                                       (_, _, _) -> schedule
