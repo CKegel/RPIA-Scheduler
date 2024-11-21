@@ -4,6 +4,7 @@ import Data.Set (Set, empty, insert)
 import Data.Map (Map, empty, toList, fromList, lookup, adjust)
 import Data.Maybe (isNothing, fromMaybe)
 import Data.Foldable (find)
+import Control.Applicative (Alternative(..))
 
 data Credential = Supervisor | Trainer | CrewChief | Driver | Attendant | Observer
   deriving (Show, Ord, Eq)
@@ -126,7 +127,7 @@ haveRelevantCredential (Crew {credentials = cred}) Attendant_ = Attendant `elem`
 
 addToSchedule :: Schedule -> Day -> Role -> CrewMember -> Maybe Schedule
 addToSchedule schedule@(Schedule {crew = existingCrew, daily_assignments = assignments}) day role crew
-    | isAvailableFor crew day && haveRelevantCredential crew role && opening schedule day role = 
+    | isAvailableFor crew day && haveRelevantCredential crew role && opening schedule day role =
       case role of
         CrewChief_ ->  Just $ schedule {crew = Data.Set.insert crew existingCrew, daily_assignments = adjust (\a -> a {crew_chief = Just crew}) day assignments}
         Driver_    ->  Just $ schedule {crew = Data.Set.insert crew existingCrew, daily_assignments = adjust (\a -> a {driver = Just crew}) day assignments}
@@ -141,4 +142,13 @@ addToSchedule schedule@(Schedule {crew = existingCrew, daily_assignments = assig
 greedyStrategy :: [CrewMember] -> Schedule
 greedyStrategy crew = helper crew emptySchedule
   where helper :: [CrewMember] -> Schedule -> Schedule
-        helper (Crew {credentials = creds, availability = avail} : xs) schedule = undefined
+        helper [] schedule = schedule
+        helper (x : xs) schedule = let chiefOpening = getOpening schedule CrewChief_
+                                       driverOpening = getOpening schedule Driver_
+                                       attendantOpening = getOpening schedule Attendant_
+                                       updatedSchedule = (chiefOpening >>= (\day -> addToSchedule schedule day CrewChief_ x)) <|>
+                                                         (driverOpening >>= (\day -> addToSchedule schedule day Driver_ x))   <|>
+                                                         (attendantOpening >>= (\day -> addToSchedule schedule day Attendant_ x))
+                                   in case updatedSchedule of
+                                       Just newSchedule -> helper (xs ++ [x]) newSchedule
+                                       Nothing -> schedule
