@@ -1,37 +1,49 @@
-module Scheduling(Credential(..), Day(..), WeeklyAvailability, CrewMember(..), Schedule(..)) where 
-import Data.Set (Set)
-import Data.Map (Map)
+-- module Scheduling(Credential(..), Day(..), WeeklyAvailability, CrewMember(..), Schedule(..)) where
+module Scheduling where
+import Data.Set (Set, empty)
+import Data.Map (Map, empty, toList, fromList, lookup, adjust)
+import Data.Maybe (isNothing, fromMaybe)
+import Data.Foldable (find)
 
-data Credential = Supervisor | Trainer | CrewChief | Driver | Attendant | Observer 
+data Credential = Supervisor | Trainer | CrewChief | Driver | Attendant | Observer
+  deriving (Show, Eq)
 -- Additional types of credentials could be TrainerCrewChief | TrainerDriver
 
 data Day = Monday | Tuesday | Wednesday | Thursday | Friday | Saturday | Sunday
+  deriving (Show, Ord, Eq, Enum)
 
 -- | Internal weekly availability structure, should interacted with special helper functions
-data WeeklyAvailability = Availability {monday :: Bool, tuesday :: Bool, wednesday :: Bool, thursday :: Bool, friday :: Bool, saturday :: Bool, sunday :: Bool}
+-- data WeeklyAvailability = Availability {monday :: Bool, tuesday :: Bool, wednesday :: Bool, thursday :: Bool, friday :: Bool, saturday :: Bool, sunday :: Bool}
+--   deriving (Show)
 
-emptyAvailability :: WeeklyAvailability
-emptyAvailability = Availability {monday = False, tuesday = False, wednesday = False, thursday = False, friday = False, saturday = False, sunday = False}
+-- emptyAvailability :: WeeklyAvailability
+-- emptyAvailability = Availability {monday = False, tuesday = False, wednesday = False, thursday = False, friday = False, saturday = False, sunday = False}
 
-getAvailabilityFromDays :: [Day] -> WeeklyAvailability
-getAvailabilityFromDays = foldr (\day acc -> case day of 
-  Monday -> acc {monday = True}
-  Tuesday -> acc {tuesday = True}
-  Wednesday -> acc {wednesday = True}
-  Thursday -> acc {thursday = True}
-  Friday -> acc {friday = True}
-  Saturday -> acc {saturday = True}
-  Sunday -> acc {sunday = True}) emptyAvailability
+-- getAvailabilityFromDays :: [Day] -> WeeklyAvailability
+-- getAvailabilityFromDays = foldr (\day acc -> case day of
+--   Monday -> acc {monday = True}
+--   Tuesday -> acc {tuesday = True}
+--   Wednesday -> acc {wednesday = True}
+--   Thursday -> acc {thursday = True}
+--   Friday -> acc {friday = True}
+--   Saturday -> acc {saturday = True}
+--   Sunday -> acc {sunday = True}) emptyAvailability
 
-data CrewMember = Crew {name :: String, credentials :: Set Credential, availability :: WeeklyAvailability}
+
+data CrewMember = Crew {name :: String, credentials :: Set Credential, availability :: Set Day}
+  deriving (Show)
 
 -- It is possible to change Role into it's own data type to have the type system enforce the presence of two attendants / observers
-type Role = Credential
-type Assignment = (Role, CrewMember)
+data Role =  CrewChief_ | Driver_ | Attendant_
+  deriving (Show)
+-- type Assignment = (Role, CrewMember)
+data Assignment = A {crew_chief :: Maybe CrewMember, driver :: Maybe CrewMember, thing1 :: Maybe CrewMember, thing2 :: Maybe CrewMember }
+  deriving (Show)
 
 -- | Schedule should hold the information for a week's potential schedule. You can expect relevant information like
 -- | who is on duty, what days is everyone working on.
-data Schedule = Schedule { crew :: [CrewMember], daily_assignments :: Map Day [Assignment] }
+data Schedule = Schedule { crew :: Set CrewMember, daily_assignments :: Map Day Assignment }
+  deriving (Show)
 
 -- The goal regarding schedule generation is that Schedules are minimal data structures that carry no information by themselves
 -- on wether it is a good or even a valid schedule. The plan being that users of the scheduler can create heuristics algorithms
@@ -42,7 +54,7 @@ data Schedule = Schedule { crew :: [CrewMember], daily_assignments :: Map Day [A
 data HeuristicResult g i = HResult {isValid :: Bool, grade :: g, additional_info :: i}
   deriving (Eq, Show)
 
-instance (Ord g, Eq i) => Ord (HeuristicResult g i) where 
+instance (Ord g, Eq i) => Ord (HeuristicResult g i) where
   -- compare :: Ord g => HeuristicResult g i -> HeuristicResult g i -> Ordering
   compare = undefined
 
@@ -56,7 +68,6 @@ newtype Heuristic g i = H (Schedule -> (HeuristicResult g i))
 -- | All schedules returned will have the additional heuristic information added to them.
 rankSchedules :: (Ord g, Eq i) => Heuristic g i -> [Schedule]  -> ([(Schedule, g, i)], [(Schedule, g, i)])
 rankSchedules = undefined
-
 
 -- | generateSchedules takes in a list of crew members returning every possible permutation of schedules from that set of crew memebers.
 -- | generateSchedules should be lazily evaluated, and favor higher crew utilization for the start of the list.
@@ -76,3 +87,58 @@ getTopNSchedules crew heuristic n m = take n . fst . rankSchedules heuristic . t
 -- | a schedule with less.
 maximizeCrewUtilization :: Heuristic Int ()
 maximizeCrewUtilization = undefined
+
+
+emptyAssignment :: Assignment
+emptyAssignment = A {crew_chief = Nothing, driver = Nothing, thing1 = Nothing, thing2 = Nothing }
+emptySchedule :: Schedule
+emptySchedule = Schedule { crew = Data.Set.empty, daily_assignments = fromList emptyAssignments}
+  where emptyAssignments = map (\d -> (d, emptyAssignment)) (enumFrom $ toEnum 0)
+
+-- [(day, [(role, crew_member)])]
+getOpening :: Schedule -> Role -> Maybe Day
+getOpening schedule CrewChief_ = fst <$> find chiefOpening (toList $ daily_assignments schedule)
+  where chiefOpening (_, A {crew_chief = chiefAssignment })
+          | isNothing chiefAssignment = True
+          | otherwise = False
+getOpening schedule Driver_ = fst <$> find driverOpening (toList $ daily_assignments schedule)
+  where driverOpening (_, A {driver = driverAssignment })
+          | isNothing driverAssignment = True
+          | otherwise = False
+getOpening schedule Attendant_ = fst <$> find attendantOpening (toList $ daily_assignments schedule)
+  where attendantOpening (_, A {thing1 = firstAssignment, thing2 = secondAssignment})
+          | isNothing firstAssignment = True
+          | isNothing secondAssignment = True
+          | otherwise = False
+
+opening :: Schedule -> Day -> Role -> Bool
+opening (Schedule {daily_assignments = assignments}) day CrewChief_ = maybe True (isNothing . crew_chief) (Data.Map.lookup day assignments)
+opening (Schedule {daily_assignments = assignments}) day Driver_    = maybe True (isNothing . driver) (Data.Map.lookup day assignments)
+opening (Schedule {daily_assignments = assignments}) day Attendant_ = maybe True (\a -> isNothing (thing1 a) || isNothing (thing2 a)) (Data.Map.lookup day assignments)
+
+isAvailableFor :: CrewMember -> Day -> Bool
+isAvailableFor (Crew {availability = avail}) day = day `elem` avail
+
+haveRelevantCredential :: CrewMember -> Role -> Bool
+haveRelevantCredential (Crew {credentials = cred}) CrewChief_ = CrewChief `elem` cred
+haveRelevantCredential (Crew {credentials = cred}) Driver_    = Driver `elem` cred
+haveRelevantCredential (Crew {credentials = cred}) Attendant_ = Attendant `elem` cred
+
+addToSchedule :: Schedule -> Day -> Role -> CrewMember -> Maybe Schedule
+addToSchedule schedule@(Schedule {daily_assignments = assignments}) day role crew
+    | isAvailableFor crew day && haveRelevantCredential crew role && opening schedule day role = 
+      case role of
+        CrewChief_ ->  Just $ schedule {daily_assignments = adjust (\a -> a {crew_chief = Just crew}) day assignments}
+        Driver_    ->  Just $ schedule {daily_assignments = adjust (\a -> a {driver = Just crew}) day assignments}
+        Attendant_ ->  Just $ schedule {daily_assignments = adjust (firstOpening crew) day assignments}
+    | otherwise = Nothing
+  where firstOpening :: CrewMember -> Assignment -> Assignment
+        firstOpening crew' assignment@(A {thing1 = Nothing}) = assignment {thing1 = Just crew'}
+        firstOpening crew' assignment@(A {thing2 = Nothing}) = assignment {thing2 = Just crew'}
+        firstOpening crew' assignment = assignment {thing1 = Just crew'}
+
+
+greedyStrategy :: [CrewMember] -> Schedule
+greedyStrategy crew = helper crew emptySchedule
+  where helper :: [CrewMember] -> Schedule -> Schedule
+        helper (Crew {credentials = creds, availability = avail} : xs) schedule = undefined
