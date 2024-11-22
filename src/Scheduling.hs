@@ -2,16 +2,16 @@
 module Scheduling where
 import Data.Set (Set, empty, insert, fromList)
 import Data.Map (Map, empty, toList, fromList, lookup, adjust)
-import Data.Maybe (isNothing, fromMaybe, listToMaybe, mapMaybe)
+import Data.Maybe (isNothing, fromMaybe, listToMaybe, mapMaybe, catMaybes)
 import Data.Foldable (find)
 import Control.Applicative (Alternative(..))
 
 data Credential = Supervisor | Trainer | CrewChief | Driver | Attendant | Observer
-  deriving (Show, Ord, Eq)
+  deriving (Read, Show, Ord, Eq)
 -- Additional types of credentials could be TrainerCrewChief | TrainerDriver
 
 data Day = Monday | Tuesday | Wednesday | Thursday | Friday | Saturday | Sunday
-  deriving (Show, Ord, Eq, Enum)
+  deriving (Read, Show, Ord, Eq, Enum)
 
 -- | Internal weekly availability structure, should interacted with special helper functions
 -- data WeeklyAvailability = Availability {monday :: Bool, tuesday :: Bool, wednesday :: Bool, thursday :: Bool, friday :: Bool, saturday :: Bool, sunday :: Bool}
@@ -130,7 +130,10 @@ haveRelevantCredential (Crew {credentials = cred}) Attendant_ = Attendant `elem`
 
 addToSchedule :: Schedule -> Day -> Role -> CrewMember -> Maybe Schedule
 addToSchedule schedule@(Schedule {crew = existingCrew, daily_assignments = assignments}) day role crew
-    | isAvailableFor crew day && haveRelevantCredential crew role && opening schedule day role =
+    |  isAvailableFor crew day 
+    && haveRelevantCredential crew role 
+    && opening schedule day role 
+    && notAlreadyAssigned schedule day crew =
       case role of
         CrewChief_ ->  Just $ schedule {crew = Data.Set.insert crew existingCrew, daily_assignments = adjust (\a -> a {crew_chief = Just crew}) day assignments}
         Driver_    ->  Just $ schedule {crew = Data.Set.insert crew existingCrew, daily_assignments = adjust (\a -> a {driver = Just crew}) day assignments}
@@ -140,6 +143,14 @@ addToSchedule schedule@(Schedule {crew = existingCrew, daily_assignments = assig
         firstOpening crew' assignment@(A {thing1 = Nothing}) = assignment {thing1 = Just crew'}
         firstOpening crew' assignment@(A {thing2 = Nothing}) = assignment {thing2 = Just crew'}
         firstOpening crew' assignment = assignment {thing1 = Just crew'}
+
+elemAssignment :: CrewMember -> Assignment -> Bool
+elemAssignment crew (A {crew_chief = c, driver = d, thing1 = a1, thing2 = a2}) = crew `elem` catMaybes [c, d, a1, a2]
+
+-- | notAlreadyAssigned asserts that a crew member does not already exist in 
+notAlreadyAssigned :: Schedule -> Day -> CrewMember -> Bool
+notAlreadyAssigned (Schedule {daily_assignments = assignments}) day crew = 
+  maybe True (not . elemAssignment crew) (Data.Map.lookup day assignments)
 
 
 greedyStrategy :: [CrewMember] -> Schedule

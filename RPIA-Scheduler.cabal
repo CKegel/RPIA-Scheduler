@@ -38,8 +38,10 @@ library
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints
   build-depends:
       base >=4.7 && <5
+    , brick
     , containers >=0.6 && <1
     , hspec
+    , text
   default-language: Haskell2010
 
 executable RPIA-Scheduler-exe
@@ -54,8 +56,10 @@ executable RPIA-Scheduler-exe
   build-depends:
       RPIA-Scheduler
     , base >=4.7 && <5
+    , brick
     , containers >=0.6 && <1
     , hspec
+    , text
   default-language: Haskell2010
 
 test-suite RPIA-Scheduler-test
@@ -71,6 +75,8 @@ test-suite RPIA-Scheduler-test
   build-depends:
       RPIA-Scheduler
     , base >=4.7 && <5
+    , brick
     , containers >=0.6 && <1
     , hspec
+    , text
   default-language: Haskell2010
