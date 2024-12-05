@@ -55,22 +55,38 @@ data Schedule = Schedule { crew :: Set CrewMember, daily_assignments :: Map Day 
 -- the user to fine tune the scheduler generating schedules that the user specifically wants.
 
 
-data HeuristicResult g i = HResult {isValid :: Bool, grade :: g, additional_info :: i}
+data HeuristicResult g = HResult {isValid :: Bool, grade :: g}
   deriving (Eq, Show)
 
-instance (Ord g, Eq i) => Ord (HeuristicResult g i) where
+instance (Ord g) => Ord (HeuristicResult g) where
   -- compare :: Ord g => HeuristicResult g i -> HeuristicResult g i -> Ordering
   compare = undefined
 
 -- | Heuristics plan to implement the Functor and Applicative constraints, as these constraints will allow for 
 -- | the composition of Heuristics. Providing a method to create more complex constraints from simple ones. 
-newtype Heuristic g i = H (Schedule -> HeuristicResult g i)
+newtype Heuristic g = H (Schedule -> HeuristicResult g)
+
+instance Functor Heuristic where 
+  fmap = undefined
+
+instance Applicative Heuristic where 
+  pure = undefined
+  (<*>) = undefined
+
+instance Monad Heuristic where
+  (>>=) = undefined
+
+
+-- | An example heuristic might be to maximize the crew utilization. A schedule with more distinct crew memebers is more preferable to
+-- | a schedule with less.
+maximizeCrewUtilization :: Heuristic Int
+maximizeCrewUtilization = H $ \schedule -> HResult { isValid = True, grade = length . crew $ schedule }
 
 
 -- | rankSchedules takes in a Heuristic and a list of schedules producing a list of schedules
 -- | ordered by the best grade, and returning all invalid schedules into the second tuple response
 -- | All schedules returned will have the additional heuristic information added to them.
-rankSchedules :: (Ord g, Eq i) => Heuristic g i -> [Schedule]  -> ([(Schedule, g, i)], [(Schedule, g, i)])
+rankSchedules :: (Ord g) => Heuristic g -> [Schedule]  -> ([(Schedule, g)], [(Schedule, g)])
 rankSchedules = undefined
 
 -- | generateSchedules takes in a list of crew members returning every possible permutation of schedules from that set of crew memebers.
@@ -78,19 +94,16 @@ rankSchedules = undefined
 -- | In the future generating permutations might become infeasible so looking into a strategies system
 -- | where you would provide a strategy for generating schedules might be a good solution.
 generateSchedules :: [CrewMember] -> [Schedule]
-generateSchedules = undefined
+generateSchedules = H $ (\schedule -> HResult { isValid = True, grade = len . crew $ schedule} )
 
 
 -- | getTopNSchedules takes in a set of crew members, a heuristic, a number N, and a number M, returning the top N valid schedules
 -- | from the M generated schedules.
-getTopNSchedules :: (Ord g, Eq i) => [CrewMember] -> Heuristic g i -> Int -> Int -> [(Schedule, g, i)]
+getTopNSchedules :: (Ord g) => [CrewMember] -> Heuristic g -> Int -> Int -> [(Schedule, g)]
 getTopNSchedules crew heuristic n m = take n . fst . rankSchedules heuristic . take m $ generateSchedules crew
 
 
--- | An example heuristic might be to maximize the crew utilization. A schedule with more distinct crew memebers is more preferable to
--- | a schedule with less.
-maximizeCrewUtilization :: Heuristic Int ()
-maximizeCrewUtilization = undefined
+
 
 
 emptyAssignment :: Assignment

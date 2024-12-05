@@ -8,13 +8,6 @@ import Data.Maybe
 import Data.String
 
 
--- ====================================
--- | 
-
--- | printSchedule produces a pretty text based representation of a given schedule
--- printSchedule :: Schedule -> String
--- printSchedule = undefined
-
 renderRow :: (Day, Assignment) -> [Widget ()]
 renderRow (day, A {crew_chief = c, driver = d, thing1 = a1, thing2 = a2}) = [ txt . fromString $ show day
                                                                             , txt . fromString $ maybe "" name c

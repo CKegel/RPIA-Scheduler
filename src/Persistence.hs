@@ -5,3 +5,8 @@ import Scheduling (CrewMember)
 readCrewFromFile :: FilePath -> IO [CrewMember]
 readCrewFromFile = undefined
 
+crewToJSON :: CrewMember -> JSONValue 
+crewToJSON = undefined
+
+crewFromJSON :: JSONValue -> Maybe CrewMember
+crewFromJSON = undefined
