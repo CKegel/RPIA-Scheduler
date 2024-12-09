@@ -66,15 +66,26 @@ instance (Ord g) => Ord (HeuristicResult g) where
 -- | the composition of Heuristics. Providing a method to create more complex constraints from simple ones. 
 newtype Heuristic g = H (Schedule -> HeuristicResult g)
 
-instance Functor Heuristic where 
-  fmap = undefined
+instance Functor Heuristic where
+  -- fmap :: (a -> b) -> Heuristic a -> Heuristic b
+  fmap f (H a) = H $ \s -> let (HResult v g) = a s
+                           in HResult v (f g)
 
-instance Applicative Heuristic where 
-  pure = undefined
-  (<*>) = undefined
+instance Applicative Heuristic where
+  -- pure :: a -> Heuristic a
+  pure a = H $ \_ -> HResult True a
+
+  -- (<*>) :: Heuristic (a -> b) -> Heuristic a -> Heuristic b
+  (<*>) (H fH) (H aH) = H $ \s -> let (HResult v1 f) = fH s
+                                      (HResult v2 a) = aH s
+                                  in HResult (v1 && v2) (f a)
 
 instance Monad Heuristic where
-  (>>=) = undefined
+  -- (>>=) :: Heuristic a -> (a -> Heuristic b) -> Heuristic b
+  (>>=) (H aH) f = H $ \s -> let (HResult _ a) = aH s
+                                 (H f') = f a
+                                 (HResult v r) = f' s
+                             in HResult v r
 
 
 -- | An example heuristic might be to maximize the crew utilization. A schedule with more distinct crew memebers is more preferable to
@@ -143,9 +154,9 @@ haveRelevantCredential (Crew {credentials = cred}) Attendant_ = Attendant `elem`
 
 addToSchedule :: Schedule -> Day -> Role -> CrewMember -> Maybe Schedule
 addToSchedule schedule@(Schedule {crew = existingCrew, daily_assignments = assignments}) day role crew
-    |  isAvailableFor crew day 
-    && haveRelevantCredential crew role 
-    && opening schedule day role 
+    |  isAvailableFor crew day
+    && haveRelevantCredential crew role
+    && opening schedule day role
     && notAlreadyAssigned schedule day crew =
       case role of
         CrewChief_ ->  Just $ schedule {crew = Data.Set.insert crew existingCrew, daily_assignments = adjust (\a -> a {crew_chief = Just crew}) day assignments}
@@ -162,7 +173,7 @@ elemAssignment crew (A {crew_chief = c, driver = d, thing1 = a1, thing2 = a2}) =
 
 -- | notAlreadyAssigned asserts that a crew member does not already exist in 
 notAlreadyAssigned :: Schedule -> Day -> CrewMember -> Bool
-notAlreadyAssigned (Schedule {daily_assignments = assignments}) day crew = 
+notAlreadyAssigned (Schedule {daily_assignments = assignments}) day crew =
   maybe True (not . elemAssignment crew) (Data.Map.lookup day assignments)
 
 
