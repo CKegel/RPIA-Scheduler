@@ -1,6 +1,7 @@
 -- module Scheduling(Credential(..), Day(..), WeeklyAvailability, CrewMember(..), Schedule(..)) where
 module Scheduling where
 import Data.Set (Set, empty, insert, fromList)
+import qualified Data.Set
 import Data.Map (Map, empty, toList, fromList, lookup, adjust)
 import Data.Maybe (isNothing, fromMaybe, listToMaybe, mapMaybe, catMaybes)
 import Data.Foldable (find)
@@ -12,24 +13,6 @@ data Credential = Supervisor | Trainer | CrewChief | Driver | Attendant | Observ
 
 data Day = Monday | Tuesday | Wednesday | Thursday | Friday | Saturday | Sunday
   deriving (Read, Show, Ord, Eq, Enum)
-
--- | Internal weekly availability structure, should interacted with special helper functions
--- data WeeklyAvailability = Availability {monday :: Bool, tuesday :: Bool, wednesday :: Bool, thursday :: Bool, friday :: Bool, saturday :: Bool, sunday :: Bool}
---   deriving (Show)
-
--- emptyAvailability :: WeeklyAvailability
--- emptyAvailability = Availability {monday = False, tuesday = False, wednesday = False, thursday = False, friday = False, saturday = False, sunday = False}
-
--- getAvailabilityFromDays :: [Day] -> WeeklyAvailability
--- getAvailabilityFromDays = foldr (\day acc -> case day of
---   Monday -> acc {monday = True}
---   Tuesday -> acc {tuesday = True}
---   Wednesday -> acc {wednesday = True}
---   Thursday -> acc {thursday = True}
---   Friday -> acc {friday = True}
---   Saturday -> acc {saturday = True}
---   Sunday -> acc {sunday = True}) emptyAvailability
-
 
 data CrewMember = Crew {name :: String, credentials :: Set Credential, availability :: Set Day}
   deriving (Show, Ord, Eq)
@@ -105,13 +88,29 @@ rankSchedules = undefined
 -- | In the future generating permutations might become infeasible so looking into a strategies system
 -- | where you would provide a strategy for generating schedules might be a good solution.
 generateSchedules :: [CrewMember] -> [Schedule]
-generateSchedules = H $ (\schedule -> HResult { isValid = True, grade = len . crew $ schedule} )
-
+generateSchedules [] = [emptySchedule]
+generateSchedules (member : xs) = do schedule <- generateSchedules xs
+                                     genSchedulesFor schedule member
 
 -- | getTopNSchedules takes in a set of crew members, a heuristic, a number N, and a number M, returning the top N valid schedules
 -- | from the M generated schedules.
 getTopNSchedules :: (Ord g) => [CrewMember] -> Heuristic g -> Int -> Int -> [(Schedule, g)]
 getTopNSchedules crew heuristic n m = take n . fst . rankSchedules heuristic . take m $ generateSchedules crew
+
+
+-- data Credential = Supervisor | Trainer | CrewChief | Driver | Attendant | Observer
+-- data Role =  CrewChief_ | Driver_ | Attendant_
+
+credentialToRole :: Credential -> Role
+credentialToRole CrewChief = CrewChief_
+credentialToRole Driver = Driver_
+credentialToRole _ = Attendant_
+
+genSchedulesFor :: Schedule -> CrewMember -> [Schedule]
+genSchedulesFor s c = do day <- Data.Set.toList (availability c)
+                         cred <- Data.Set.toList (credentials c)
+                         let role = credentialToRole cred
+                         return $ s `fromMaybe` addToSchedule s day role c 
 
 
 
