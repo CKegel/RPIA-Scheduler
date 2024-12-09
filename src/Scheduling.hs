@@ -6,6 +6,7 @@ import Data.Map (Map, empty, toList, fromList, lookup, adjust)
 import Data.Maybe (isNothing, fromMaybe, listToMaybe, mapMaybe, catMaybes)
 import Data.Foldable (find)
 import Control.Applicative (Alternative(..))
+import Data.List (sortBy)
 
 data Credential = Supervisor | Trainer | CrewChief | Driver | Attendant | Observer
   deriving (Read, Show, Ord, Eq)
@@ -49,6 +50,9 @@ instance (Ord g) => Ord (HeuristicResult g) where
 -- | the composition of Heuristics. Providing a method to create more complex constraints from simple ones. 
 newtype Heuristic g = H (Schedule -> HeuristicResult g)
 
+runHeuristic :: Heuristic g -> Schedule -> HeuristicResult g
+runHeuristic (H f) = f
+
 instance Functor Heuristic where
   -- fmap :: (a -> b) -> Heuristic a -> Heuristic b
   fmap f (H a) = H $ \s -> let (HResult v g) = a s
@@ -81,7 +85,19 @@ maximizeCrewUtilization = H $ \schedule -> HResult { isValid = True, grade = len
 -- | ordered by the best grade, and returning all invalid schedules into the second tuple response
 -- | All schedules returned will have the additional heuristic information added to them.
 rankSchedules :: (Ord g) => Heuristic g -> [Schedule]  -> ([(Schedule, g)], [(Schedule, g)])
-rankSchedules = undefined
+rankSchedules h schedules =  (sortByGrade valids, sortByGrade invalids)
+  where results = map (runHeuristic h) schedules
+        zippedResults = zip schedules results
+        (valids, invalids) = foldr f ([], []) zippedResults
+        f (schedule, HResult True g) (valids, invalids) = ((schedule, g) : valids, invalids)
+        f (schedule, HResult False g) (valids, invalids) = (valids, (schedule, g) : invalids)
+        sortByGrade = sortBy (\(_, a) (_, b) -> compare b a)
+
+-- split :: (Ord g) => (Schedule, HeuristicResult g) -> ([(Schedule, g)], [(Schedule, g)]) -> ([(Schedule, g)], [(Schedule, g)])
+-- split (schedule, HResult True g) (valids, invalids) = ((schedule, g) : valids, invalids)
+-- split (schedule, HResult False g) (valids, invalids) = (valids, (schedule, g) : invalids)
+
+
 
 -- | generateSchedules takes in a list of crew members returning every possible permutation of schedules from that set of crew memebers.
 -- | generateSchedules should be lazily evaluated, and favor higher crew utilization for the start of the list.
@@ -110,7 +126,7 @@ genSchedulesFor :: Schedule -> CrewMember -> [Schedule]
 genSchedulesFor s c = do day <- Data.Set.toList (availability c)
                          cred <- Data.Set.toList (credentials c)
                          let role = credentialToRole cred
-                         return $ s `fromMaybe` addToSchedule s day role c 
+                         return $ s `fromMaybe` addToSchedule s day role c
 
 
 
