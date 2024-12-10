@@ -2,15 +2,11 @@
 module Scheduling where
 import Data.Set (Set, empty, insert, fromList)
 import qualified Data.Set
-import Data.Map (Map, empty, toList, fromList, lookup, adjust)
-import Data.Maybe (isNothing, fromMaybe, listToMaybe, mapMaybe, catMaybes)
-import Data.Foldable (find)
-import Control.Applicative (Alternative(..))
-import Data.List (sortBy)
+import Data.Map (Map, toList, fromList, lookup, adjust)
+import Data.Maybe (isNothing, fromMaybe, mapMaybe, catMaybes)
 
 data Credential = Supervisor | Trainer | CrewChief | Driver | Attendant | Observer
   deriving (Read, Show, Ord, Eq)
--- Additional types of credentials could be TrainerCrewChief | TrainerDriver
 
 data Day = Monday | Tuesday | Wednesday | Thursday | Friday | Saturday | Sunday
   deriving (Read, Show, Ord, Eq, Enum)
@@ -28,76 +24,23 @@ data Role =  CrewChief_ | Driver_ | Attendant_
 data Assignment = A {crew_chief :: Maybe CrewMember, driver :: Maybe CrewMember, thing1 :: Maybe CrewMember, thing2 :: Maybe CrewMember }
   deriving (Show)
 
+emptyAssignment :: Assignment
+emptyAssignment = A {crew_chief = Nothing, driver = Nothing, thing1 = Nothing, thing2 = Nothing }
+
+
 -- | Schedule should hold the information for a week's potential schedule. You can expect relevant information like
 -- | who is on duty, what days is everyone working on.
 data Schedule = Schedule { crew :: Set CrewMember, daily_assignments :: Map Day Assignment }
   deriving (Show)
 
+emptySchedule :: Schedule
+emptySchedule = Schedule { crew = Data.Set.empty, daily_assignments = Data.Map.fromList emptyAssignments}
+  where emptyAssignments = map (\d -> (d, emptyAssignment)) (enumFrom $ toEnum 0)
+
 -- The goal regarding schedule generation is that Schedules are minimal data structures that carry no information by themselves
 -- on wether it is a good or even a valid schedule. The plan being that users of the scheduler can create heuristics algorithms
 -- who's sole goal is to grade how good a given schedule is and whether it is valid. This plug and play design is meant to allow
 -- the user to fine tune the scheduler generating schedules that the user specifically wants.
-
-
-data HeuristicResult g = HResult {isValid :: Bool, grade :: g}
-  deriving (Eq, Show)
-
-instance (Ord g) => Ord (HeuristicResult g) where
-  -- compare :: Ord g => HeuristicResult g i -> HeuristicResult g i -> Ordering
-  compare = undefined
-
--- | Heuristics plan to implement the Functor and Applicative constraints, as these constraints will allow for 
--- | the composition of Heuristics. Providing a method to create more complex constraints from simple ones. 
-newtype Heuristic g = H (Schedule -> HeuristicResult g)
-
-runHeuristic :: Heuristic g -> Schedule -> HeuristicResult g
-runHeuristic (H f) = f
-
-instance Functor Heuristic where
-  -- fmap :: (a -> b) -> Heuristic a -> Heuristic b
-  fmap f (H a) = H $ \s -> let (HResult v g) = a s
-                           in HResult v (f g)
-
-instance Applicative Heuristic where
-  -- pure :: a -> Heuristic a
-  pure a = H $ \_ -> HResult True a
-
-  -- (<*>) :: Heuristic (a -> b) -> Heuristic a -> Heuristic b
-  (<*>) (H fH) (H aH) = H $ \s -> let (HResult v1 f) = fH s
-                                      (HResult v2 a) = aH s
-                                  in HResult (v1 && v2) (f a)
-
-instance Monad Heuristic where
-  -- (>>=) :: Heuristic a -> (a -> Heuristic b) -> Heuristic b
-  (>>=) (H aH) f = H $ \s -> let (HResult _ a) = aH s
-                                 (H f') = f a
-                                 (HResult v r) = f' s
-                             in HResult v r
-
-
--- | An example heuristic might be to maximize the crew utilization. A schedule with more distinct crew memebers is more preferable to
--- | a schedule with less.
-maximizeCrewUtilization :: Heuristic Int
-maximizeCrewUtilization = H $ \schedule -> HResult { isValid = True, grade = length . crew $ schedule }
-
-
--- | rankSchedules takes in a Heuristic and a list of schedules producing a list of schedules
--- | ordered by the best grade, and returning all invalid schedules into the second tuple response
--- | All schedules returned will have the additional heuristic information added to them.
-rankSchedules :: (Ord g) => Heuristic g -> [Schedule]  -> ([(Schedule, g)], [(Schedule, g)])
-rankSchedules h schedules =  (sortByGrade valids, sortByGrade invalids)
-  where results = map (runHeuristic h) schedules
-        zippedResults = zip schedules results
-        (valids, invalids) = foldr f ([], []) zippedResults
-        f (schedule, HResult True g) (valids, invalids) = ((schedule, g) : valids, invalids)
-        f (schedule, HResult False g) (valids, invalids) = (valids, (schedule, g) : invalids)
-        sortByGrade = sortBy (\(_, a) (_, b) -> compare b a)
-
--- split :: (Ord g) => (Schedule, HeuristicResult g) -> ([(Schedule, g)], [(Schedule, g)]) -> ([(Schedule, g)], [(Schedule, g)])
--- split (schedule, HResult True g) (valids, invalids) = ((schedule, g) : valids, invalids)
--- split (schedule, HResult False g) (valids, invalids) = (valids, (schedule, g) : invalids)
-
-
 
 -- | generateSchedules takes in a list of crew members returning every possible permutation of schedules from that set of crew memebers.
 -- | generateSchedules should be lazily evaluated, and favor higher crew utilization for the start of the list.
@@ -108,35 +51,21 @@ generateSchedules [] = [emptySchedule]
 generateSchedules (member : xs) = do schedule <- generateSchedules xs
                                      genSchedulesFor schedule member
 
--- | getTopNSchedules takes in a set of crew members, a heuristic, a number N, and a number M, returning the top N valid schedules
--- | from the M generated schedules.
-getTopNSchedules :: (Ord g) => [CrewMember] -> Heuristic g -> Int -> Int -> [(Schedule, g)]
-getTopNSchedules crew heuristic n m = take n . fst . rankSchedules heuristic . take m $ generateSchedules crew
 
-
--- data Credential = Supervisor | Trainer | CrewChief | Driver | Attendant | Observer
--- data Role =  CrewChief_ | Driver_ | Attendant_
 
 credentialToRole :: Credential -> Role
 credentialToRole CrewChief = CrewChief_
 credentialToRole Driver = Driver_
 credentialToRole _ = Attendant_
 
+-- | genSchedulesFor takes in a schedule and crew member enumerating all possible days and roles
+-- | a member could work for. Returning a list of possible schedules
 genSchedulesFor :: Schedule -> CrewMember -> [Schedule]
 genSchedulesFor s c = do day <- Data.Set.toList (availability c)
                          cred <- Data.Set.toList (credentials c)
                          let role = credentialToRole cred
                          return $ s `fromMaybe` addToSchedule s day role c
 
-
-
-
-
-emptyAssignment :: Assignment
-emptyAssignment = A {crew_chief = Nothing, driver = Nothing, thing1 = Nothing, thing2 = Nothing }
-emptySchedule :: Schedule
-emptySchedule = Schedule { crew = Data.Set.empty, daily_assignments = Data.Map.fromList emptyAssignments}
-  where emptyAssignments = map (\d -> (d, emptyAssignment)) (enumFrom $ toEnum 0)
 
 -- [(day, [(role, crew_member)])]
 getOpening :: Schedule -> Role -> [Day]
@@ -167,6 +96,14 @@ haveRelevantCredential (Crew {credentials = cred}) CrewChief_ = CrewChief `elem`
 haveRelevantCredential (Crew {credentials = cred}) Driver_    = Driver `elem` cred
 haveRelevantCredential (Crew {credentials = cred}) Attendant_ = Attendant `elem` cred
 
+elemAssignment :: CrewMember -> Assignment -> Bool
+elemAssignment crew (A {crew_chief = c, driver = d, thing1 = a1, thing2 = a2}) = crew `elem` catMaybes [c, d, a1, a2]
+
+-- | notAlreadyAssigned asserts that a crew member does not already exist in 
+notAlreadyAssigned :: Schedule -> Day -> CrewMember -> Bool
+notAlreadyAssigned (Schedule {daily_assignments = assignments}) day crew =
+  maybe True (not . elemAssignment crew) (Data.Map.lookup day assignments)
+
 addToSchedule :: Schedule -> Day -> Role -> CrewMember -> Maybe Schedule
 addToSchedule schedule@(Schedule {crew = existingCrew, daily_assignments = assignments}) day role crew
     |  isAvailableFor crew day
@@ -182,14 +119,6 @@ addToSchedule schedule@(Schedule {crew = existingCrew, daily_assignments = assig
         firstOpening crew' assignment@(A {thing1 = Nothing}) = assignment {thing1 = Just crew'}
         firstOpening crew' assignment@(A {thing2 = Nothing}) = assignment {thing2 = Just crew'}
         firstOpening crew' assignment = assignment {thing1 = Just crew'}
-
-elemAssignment :: CrewMember -> Assignment -> Bool
-elemAssignment crew (A {crew_chief = c, driver = d, thing1 = a1, thing2 = a2}) = crew `elem` catMaybes [c, d, a1, a2]
-
--- | notAlreadyAssigned asserts that a crew member does not already exist in 
-notAlreadyAssigned :: Schedule -> Day -> CrewMember -> Bool
-notAlreadyAssigned (Schedule {daily_assignments = assignments}) day crew =
-  maybe True (not . elemAssignment crew) (Data.Map.lookup day assignments)
 
 
 greedyStrategy :: [CrewMember] -> Schedule
