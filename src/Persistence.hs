@@ -1,12 +1,16 @@
 module Persistence where
 import Scheduling (CrewMember)
+import Data.Aeson
+import Data.ByteString.Lazy
+import Data.Maybe
+
 
 -- | readCrewFromFile reads the list of crew memebers from a file.
 readCrewFromFile :: FilePath -> IO [CrewMember]
-readCrewFromFile = undefined
+readCrewFromFile path = unwrap . decode <$> Data.ByteString.Lazy.readFile path
+  where unwrap (Just x) = x
+        unwrap Nothing = []
 
-crewToJSON :: CrewMember -> JSONValue 
-crewToJSON = undefined
-
-crewFromJSON :: JSONValue -> Maybe CrewMember
-crewFromJSON = undefined
+writeCrewToFile :: [CrewMember] -> FilePath -> IO ()
+writeCrewToFile crew path = Data.ByteString.Lazy.writeFile path encodedStr
+  where encodedStr = encode crew

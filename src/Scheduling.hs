@@ -1,18 +1,22 @@
 -- module Scheduling(Credential(..), Day(..), WeeklyAvailability, CrewMember(..), Schedule(..)) where
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveAnyClass #-}
 module Scheduling where
 import Data.Set (Set, empty, insert, fromList)
 import qualified Data.Set
 import Data.Map (Map, toList, fromList, lookup, adjust)
 import Data.Maybe (isNothing, fromMaybe, mapMaybe, catMaybes)
+import Data.Aeson
+import GHC.Generics
 
 data Credential = Supervisor | Trainer | CrewChief | Driver | Attendant | Observer
-  deriving (Read, Show, Ord, Eq)
+  deriving (Read, Show, Ord, Eq, Generic, FromJSON, ToJSON)
 
 data Day = Monday | Tuesday | Wednesday | Thursday | Friday | Saturday | Sunday
-  deriving (Read, Show, Ord, Eq, Enum)
+  deriving (Read, Show, Ord, Eq, Enum, Generic, FromJSON, ToJSON)
 
 data CrewMember = Crew {name :: String, credentials :: Set Credential, availability :: Set Day}
-  deriving (Show, Ord, Eq)
+  deriving (Show, Ord, Eq, Generic, FromJSON, ToJSON)
 
 newMember :: String -> [Credential] -> [Day] -> CrewMember
 newMember name' creds avail = Crew {name = name', credentials = Data.Set.fromList creds, availability = Data.Set.fromList avail}
