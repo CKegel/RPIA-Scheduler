@@ -6,10 +6,6 @@ import Data.Map (elems)
 data HeuristicResult g = HResult {isValid :: Bool, grade :: g}
   deriving (Eq, Show)
 
-instance (Ord g) => Ord (HeuristicResult g) where
-  -- compare :: Ord g => HeuristicResult g i -> HeuristicResult g i -> Ordering
-  compare = undefined
-
 -- | Heuristics plan to implement the Functor and Applicative constraints, as these constraints will allow for 
 -- | the composition of Heuristics. Providing a method to create more complex constraints from simple ones. 
 newtype Heuristic g = H (Schedule -> HeuristicResult g)
